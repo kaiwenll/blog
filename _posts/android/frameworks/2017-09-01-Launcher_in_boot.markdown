@@ -14,6 +14,11 @@ tags:
     - 开机
 ---
 
+### Android version
+
+Android version: 4.4
+Platform: freescale imx6
+
 ### Background
 
 &emsp;&emsp;首先介绍下写这篇文章的起因。之前写过一篇[Android电源管理之开机流程](https://chendongqi.github.io/blog/2017/02/20/pm_boot_flow/)，拆解了从bootloader到android启动的各个阶段，是一篇概要性的综述，又带了点自己的项目经验和理解在里面。后来发现介绍android启动的文章网上其实很多，有深有浅，但是深的其实也不会涉及到很细的细节，不会分析到一个函数调过去还需要走多少步才能达到它预期的结果。时过境迁，回过头看自己这篇开机流程里其实大多数章节也是这样，流程性的东西比较多，当时以为自己懂的东西真的遇到问题时才发现只是懂了皮毛。  
