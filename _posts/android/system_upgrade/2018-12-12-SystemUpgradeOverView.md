@@ -20,7 +20,7 @@ tags:
 系统升级是一块独立、完整又庞大的模块，其中涉及了下到uboot，上到服务器的知识点，整个系列中我会讲述到android原生系统的升级方式和X公司在原生基础上定制的升级方式，其中包含了我在工作中接触到的技术细节，修改过的需求和问题以及自己对这个模块的设计理解。在这之前有必要向未接触过此模块的读者先介绍下系统升级的概览，先知系统升级做了什么事，然后才能去看懂它是怎么去做的，这也是我一贯写技术博客所坚持的方式。  
 ### OTA
 什么是OTA，我们先从一张图来看下它的业务模型  
-![OTA业务模型](https://chendongqi.github.io/blog/img/2018-12-07-system_upgrade/OTA-model.png)  
+![OTA业务模型](https://chendongqi.github.io/blog/img/2018-12-07-system_upgrade/OTA-Model.png)  
 而OTA业务的官方解释我们参考百度百科就可以了
 
 >OTA（Over-the-Air Technology）空中下载技术。是通过移动通信（GSM或CDMA）的空中接口对SIM卡数据及应用进行远程管理的技术。空中接口可以采用WAP、GPRS、CDMA1X及短消息技术。OTA技术的应用，使得移动通信不仅可以提供语音和数据服务，而且还能提供新业务下载。  
@@ -31,7 +31,7 @@ tags:
 
 总结了下OTA业务的通用流程如下图  
 
-![OTA业务模型](https://chendongqi.github.io/blog/img/2018-12-07-system_upgrade/OTA-Flow.jpg)  
+![OTA通用流程](https://chendongqi.github.io/blog/img/2018-12-07-system_upgrade/OTA-Flow.jpg)  
 
 #### FOTA
 
