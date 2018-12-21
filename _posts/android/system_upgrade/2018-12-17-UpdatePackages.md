@@ -1555,7 +1555,7 @@ fi
   return Item.Get("system/etc/install-recovery.sh", dir=False)
 ```
 
-很多厂商定制都会去掉这一部分，将boot和recovery镜像全拷贝，然后升级时通过写分区的方式来做升级，这种定制方式的介绍见后面[镜像文件全拷贝升级定制方式](http://chendongqi.me/2018/12/17/UpdatePackages/镜像文件全拷贝升级定制方式)
+很多厂商定制都会去掉这一部分，将boot和recovery镜像全拷贝，然后升级时通过写分区的方式来做升级，这种定制方式的介绍见后面[镜像文件全拷贝升级定制方式](http://chendongqi.me/2018/12/17/UpdatePackages/#镜像文件全拷贝升级定制方式)
 
 #### 增量包
 
