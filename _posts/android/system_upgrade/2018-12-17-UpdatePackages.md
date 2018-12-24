@@ -717,13 +717,13 @@ $(INTERNAL_OTA_PACKAGE_TARGET): $(BUILT_TARGET_FILES_PACKAGE) $(DISTTOOLS)
 	   -m $(EXTRA_SCRIPTMCU) \
 	   $(BUILT_TARGET_FILES_PACKAGE) $(INTERNAL_OTA_PACKAGE_TARGET)
 	@echo "Create ota package md5."
-	### 19、厂商定制来给升级包增加md5
+	### 厂商定制来给升级包增加md5
 	$(hide) ./build/tools/releasetools/create_md5_file \
 			-i $(INTERNAL_OTA_PACKAGE_TARGET) \
 			-p $(TARGET_DEVICE) \
 			-o $(PRODUCT_OUT)/ota_md5.txt
 	$(hide) $(MKFILE)  --file $(INTERNAL_OTA_PACKAGE_TARGET) --suffix $(PRODUCT_OUT)/ota_md5.txt --suffix_size 196 --output $@
-	### 20、删除用完的文件
+	### 删除用完的文件
 	$(hide) rm -rf $(PRODUCT_OUT)/Manifest_SYS.xml
 	$(hide) rm -rf $(PRODUCT_OUT)/ota_md5.txt
 	@echo "ota update zip package done..."
@@ -941,7 +941,7 @@ def main(argv):
     WriteIncrementalOTAPackage(input_zip, source_zip, output_zip)
 
   output_zip.close()
-
+  ### 签名
   SignOutput(temp_zip_file.name, args[1])
   temp_zip_file.close()
 
@@ -1451,7 +1451,7 @@ def CopySystemFiles(input_zip, output_zip=None,
       if IsSymlink(info):
         symlinks.append((input_zip.read(info.filename),
                          OPTIONS.src_file + "system/" + basefilename))### 其实就是把“SYSTEM/”换成了“system/”
-      else:
+      else:### 其他文件相当于直接拷贝到输出的升级包中
         info2 = copy.copy(info)
         fn = info2.filename = "system/" + basefilename
         if substitute and fn in substitute and substitute[fn] is None:
@@ -1461,7 +1461,7 @@ def CopySystemFiles(input_zip, output_zip=None,
             data = substitute[fn]
           else:
             data = input_zip.read(info.filename)
-          output_zip.writestr(info2, data)
+          output_zip.writestr(info2, data)### 写入到输出升级包中
         if fn.endswith("/"):
           Item.Get(fn[:-1], dir=True)
         else:
@@ -1555,9 +1555,1177 @@ fi
   return Item.Get("system/etc/install-recovery.sh", dir=False)
 ```
 
-很多厂商定制都会去掉这一部分，将boot和recovery镜像全拷贝，然后升级时通过写分区的方式来做升级，这种定制方式的介绍见后面[镜像文件全拷贝升级定制方式](http://chendongqi.me/2018/12/17/UpdatePackages/#镜像文件全拷贝升级定制方式)
+很多厂商定制都会去掉这一部分，将boot和recovery镜像全拷贝，然后升级时通过写分区的方式来做升级，这种定制方式的介绍见后面[镜像文件全拷贝升级定制方式](http://chendongqi.me/2018/12/17/UpdatePackages/#镜像文件全拷贝升级定制方式)  
+
+###### edify_generator.AddToZip
+
+```python
+def AddToZip(self, input_zip, output_zip, input_path=None):
+    """Write the accumulated script to the output_zip file.  input_zip
+    is used as the source for the 'updater' binary needed to run
+    script.  If input_path is not None, it will be used as a local
+    path for the binary instead of input_zip."""
+
+    self.UnmountAll()### 写入卸载语句
+
+    ### 将最终的升级脚本赋值到升级包下的META-INF/com/google/android/updater-script
+    common.ZipWriteStr(output_zip, "META-INF/com/google/android/updater-script",
+                       "\n".join(self.script) + "\n")
+
+    if input_path is None:
+      data = input_zip.read("OTA/bin/updater")
+    else:
+      data = open(os.path.join(input_path, "updater")).read()
+    ### 将target-file里的OTA/bin/updater拷贝到升级包里的META-INF/com/google/android/update-binary，权限755
+    common.ZipWriteStr(output_zip, "META-INF/com/google/android/update-binary",
+                       data, perms=0755)
+```
+
+
+
+###### SignOutput
+
+```python
+def SignOutput(temp_zip_name, output_zip_name):
+  key_passwords = common.GetKeyPasswords([OPTIONS.package_key])### 取到私钥
+  pw = key_passwords[OPTIONS.package_key]
+  ### 用私钥签名
+  common.SignFile(temp_zip_name, output_zip_name, OPTIONS.package_key, pw,
+                  whole_file=True)
+```
+
+```python
+def GetKeyPasswords(keylist):
+  """Given a list of keys, prompt the user to enter passwords for
+  those which require them.  Return a {key: password} dict.  password
+  will be None if the key has no password."""
+
+  no_passwords = []
+  need_passwords = []
+  key_passwords = {}
+  devnull = open("/dev/null", "w+b")
+  for k in sorted(keylist):
+    # We don't need a password for things that aren't really keys.
+    if k in SPECIAL_CERT_STRINGS:### SPECIAL_CERT_STRINGS = ("PRESIGNED", "EXTERNAL")
+      no_passwords.append(k)### 这种情况就不签名了
+      continue
+	### 在签名篇中讲到了私钥的查看命令
+    p = Run(["openssl", "pkcs8", "-in", k+OPTIONS.private_key_suffix,
+             "-inform", "DER", "-nocrypt"],
+            stdin=devnull.fileno(),
+            stdout=devnull.fileno(),
+            stderr=subprocess.STDOUT)
+    p.communicate()
+    if p.returncode == 0:### 执行成功，为什么要叫no_passwords就不理解了
+      # Definitely an unencrypted key.
+      no_passwords.append(k)
+    else:
+      ### OPTIONS.private_key_suffix = ".pk8"
+      p = Run(["openssl", "pkcs8", "-in", k+OPTIONS.private_key_suffix,
+               "-inform", "DER", "-passin", "pass:"],
+              stdin=devnull.fileno(),
+              stdout=devnull.fileno(),
+              stderr=subprocess.PIPE)
+      stdout, stderr = p.communicate()
+      if p.returncode == 0:
+        # Encrypted key with empty string as password.
+        key_passwords[k] = ''
+      elif stderr.startswith('Error decrypting key'):
+        # Definitely encrypted key.
+        # It would have said "Error reading key" if it didn't parse correctly.
+        need_passwords.append(k)
+      else:
+        # Potentially, a type of key that openssl doesn't understand.
+        # We'll let the routines in signapk.jar handle it.
+        no_passwords.append(k)
+  devnull.close()
+
+  ### 更新key_passwords为签名私钥
+  key_passwords.update(PasswordManager().GetPasswords(need_passwords))
+  key_passwords.update(dict.fromkeys(no_passwords, None))
+  return key_passwords
+```
+
+```python
+def SignFile(input_name, output_name, key, password, align=None,
+             whole_file=False):
+  """Sign the input_name zip/jar/apk, producing output_name.  Use the
+  given key and password (the latter may be None if the key does not
+  have a password.
+
+  If align is an integer > 1, zipalign is run to align stored files in
+  the output zip on 'align'-byte boundaries.
+
+  If whole_file is true, use the "-w" option to SignApk to embed a
+  signature that covers the whole file in the archive comment of the
+  zip file.
+  """
+
+  if align == 0 or align == 1:
+    align = None### 默认对齐是None
+
+  if align:
+    temp = tempfile.NamedTemporaryFile()
+    sign_name = temp.name
+  else:
+    ### 签名文件名=输出文件名
+    sign_name = output_name
+
+  ### OPTIONS.java_path = "java"
+  ### OPTIONS.search_path = "out/host/linux-x86"
+  ### OPTIONS.signapk_path = "framework/signapk.jar"
+  ### OPTIONS.extra_signapk_args = []
+  cmd = [OPTIONS.java_path, "-Xmx2048m", "-jar",
+         os.path.join(OPTIONS.search_path, OPTIONS.signapk_path)]
+  cmd.extend(OPTIONS.extra_signapk_args)
+  ### 默认整包签名是True，传-w给signapk，具体可以参考签名篇
+  if whole_file:
+    cmd.append("-w")
+  ### OPTIONS.public_key_suffix = ".x509.pem"
+  cmd.extend([key + OPTIONS.public_key_suffix,
+              key + OPTIONS.private_key_suffix,
+              input_name, sign_name])
+  ### cmd其实就是签名命令”java -Xmx2048m -jar out/host/linux-x86/framework/signapk.jar -w build/target/product/security/releasekey.x509.pem build/target/product/security/releasekey.pk8 input_name sign_name“
+  p = Run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+  if password is not None:
+    password += "\n"
+  p.communicate(password)
+  if p.returncode != 0:
+    raise ExternalError("signapk.jar failed: return code %s" % (p.returncode,))
+
+  ### 如果有对齐的话用zipalign工具对齐下
+  """
+  Zipalign对apk文件中未压缩的数据在4个字节边界上对齐，当资源文件通过内存映射对齐到4字节边界时，访问资源文件的代码才是有效率的。4字节对齐后，android系统就可以通过调用mmap函数读取文件,进程可以像读写内存一样对普通文件的操作，系统共享内存IPC，以在读取资源上获得较高的性能。 如果资源本身没有进行对齐处理，它就必须显式地读取它们——这个过程将会比较缓慢且会花费额外的内存。
+  mmap系统调用使得进程之间通过映射同一个普通文件实现共享内存。普通文件被映射到进程地址空间后，进程可以像访问普通内存一样对文件进行访问，不必再调用read()，write（）等操作
+  程序中大量运用mmap，用到的正是mmap的这种“像访问普通内存一样对文件进行访问”的功能。当要对一个文件频繁的进行访问，并且指针来回移动时，调用mmap比用常规的方法快很多
+  在4个字节边界上对齐的意思就是指编译器吧4个字节作为一个单位来进行读取的结果，这样的话，CPU能够对变量进行高效、快速的访问（较之前不对齐）
+   android系统中的Davlik虚拟机使用自己专有的格式DEX，DEX的结构是紧凑的，为了让运行时的性能更好，可以进一步用"对齐"进一步优化，但是大小一般会有所增加
+  """
+  ### 但是对齐的话会增加点压缩包的大小，是一种空间换时间的做法，看怎么选择了，这里默认是不对齐的
+  if align:
+    p = Run(["zipalign", "-f", str(align), sign_name, output_name])
+    p.communicate()
+    if p.returncode != 0:
+      raise ExternalError("zipalign failed: return code %s" % (p.returncode,))
+    temp.close()
+```
+
+
+
+##### create_md5_file
+
+在[ota_from_target_files](http://chendongqi.me/2018/12/17/UpdatePackages/#ota_from_target_files)这里还包括了在全量包制作完成后往里面写入md5的动作，这个功能完全是厂商定制，看到时觉得还是挺有意思的，能用升级包文件本身来存储自己的md5信息，在升级时通过读文件尾部的信息来跟计算出的md5进行对比，来检查文件损坏或是被篡改的情况。是通过create_md5_file这个脚本来生成md5       
+
+```python
+#!/usr/bin/env python
+
+"""
+Give a project name and type name, the script will create a file Mainfest.xml
+which can be packaged into update.zip or patch.zip. The server side program
+will parse the Manifest.xml in zip files and show corresponding information
+in web pages.
+
+Usage:  create_md5_file [flags] -i dir_path -o md5.txt
+
+    -o (--output)
+		output file path.
+    -i (--input)
+		input dir path.
+"""
+
+import sys
+import getopt
+import re
+import os
+import string
+import md5
+import common
+
+
+# Helper class who contains all the user options
+class Options(object):
+    pass
+
+OPTIONS = Options()
+OPTIONS.input = None
+OPTIONS.ouptut = "md5.txt"
+OPTIONS.project = None
+
+def cacl_md5(file_path,output):
+    md5file=open(file_path,'rb')
+    output=hashlib.md5(md5file.read()).hexdigest()
+    md5file.close()
+
+#get md5 of a input string  
+def GetStringMD5(str):  
+    m = md5.new()
+    m.update(str)  
+    return m.hexdigest()  
+			  
+			  
+#get md5 of a input file  
+def GetFileMD5(file):
+    fileinfo = os.stat(file)
+    if int(fileinfo.st_size)/(1024*1024)>1000:### 文件超过1000MB
+        return GetBigFileMD5(file)
+    m = md5.new()
+    f = open(file,'rb')
+    m.update(f.read())
+    f.close()
+    return m.hexdigest()
+												  
+												  
+#get md5 of a input bigfile  
+def GetBigFileMD5(file):
+    m = md5.new()
+    f = open(file,'rb')
+    while True:
+        ### 这里涉及了python md5模块的一个比较好玩的用法
+        ### 这里读buf就是每次从文件里读8K的内容，然后对这8K的内容做md5计算
+        ### 其实同一个md5实例，下一次调用md5.update的时候会将上一次的内容拼接上，再做md5计算
+        ### 例：
+        """
+        >>> import md5
+		>>> m=md5.new()
+		>>> m.update('123'.encode('utf-8'))
+		>>> print(m.hexdigest())
+		202cb962ac59075b964b07152d234b70
+		>>> m.update('123'.encode('utf-8'))
+		>>> print(m.hexdigest())
+		4297f44b13955235245b2497399d7a93
+		>>> m1=md5.new()
+		>>> m1.update('123123'.encode('utf-8'))
+		>>> print(m1.hexdigest())
+		4297f44b13955235245b2497399d7a93
+        """
+        ### 从上面这个例子可以直观的看到执行两次123的md5 update，会做拼接，跟做一次123123是一样的
+		### 所以这里循环读8K的数据做md5，意思也就是按8K的单位读了整个文件，然后做md5
+        buf = f.read(8192)
+        if not buf:
+            break
+        m.update(buf)
+    f.close()
+    return m.hexdigest()
+
+def create_md5_by_dir(input_file):
+    p = str(input_file)
+    if p=="":
+	    return [ ]
+    a = os.listdir( p )
+    if p[-1] != "/":
+		p = p+"/"
+    list = [".img","",".bin",".tar",".gz",".data",".raw"]
+    result = ""
+    for x in a:
+		if os.path.isfile(p + x ):
+			c, d = os.path.splitext(p+x)
+			if d not in list:
+				continue
+			result += "##"
+			result += x
+			result += ":"
+			result += GetFileMD5(p+x)
+			result += "\n"
+    return result
+### 7.1 从文件生成md5
+def create_md5_by_file(input_file):
+    c, d = os.path.split(input_file)
+    result = "##file_name:"
+    result += d
+    result += "\n##md5:"
+    ### 7.2 生成md5
+    result += GetFileMD5(input_file)
+    result += "\n"
+    ### 最后的内容格式就是##file_name:xxx\n##md5:xxx
+    return result
+
+def main(argv):
+    # At least four arguments are required
+    if len(argv) < 2:
+        print __doc__
+        sys.exit(2)
+
+    # Parse the arguments
+    ###2 getopt模块来解析参数
+    opts, args = getopt.getopt(argv, "p:i:o:",
+            ["input=", "output=", "project="])
+
+    ###3 -p项目名，-i输入文件，-o输出文件
+    for o, a in opts:
+        if o in ("-p", "--project"):
+            OPTIONS.project = a
+        elif o in ("-i", "--input"):
+            if os.path.isdir(a):
+                OPTIONS.input = a
+            elif os.path.isfile(a):
+                OPTIONS.input = a
+            else:
+                print a + " doesn't exist"
+                sys.exit(2)
+        elif o in ("-o", "--output"):
+            OPTIONS.output = a
+        else:
+            print __doc__
+
+    if not OPTIONS.project:
+        print "project not specified!!! "
+        exit(-1)
+
+    ###4 只读方式打开输出文件，output就是$(PRODUCT_OUT)/ota_md5.txt
+    output = open(OPTIONS.output,'w')
+    if OPTIONS.project is not None:
+        ### 5 写入项目名称
+		output.write("##project:%s\n" % (OPTIONS.project))
+
+    if os.path.isfile(OPTIONS.input):### 6 通常我们用指定文件的方式
+        output.write(create_md5_by_file(OPTIONS.input))### 7 写入生成的md5
+    elif os.path.isdir(OPTIONS.input):
+        output.write(create_md5_by_dir(OPTIONS.input))
+    output.close()
+
+### 入口
+if __name__ == '__main__':
+    main(sys.argv[1:])###1 传参数给main函数
+```
+
+生成md到文件，然后通过命令```$(hide) $(MKFILE)  --file $(INTERNAL_OTA_PACKAGE_TARGET) --suffix $(PRODUCT_OUT)/ota_md5.txt --suffix_size 196 --output $@```来将md5信息写入到全量包中。从config.mk里可以看到```MKFILE := $(HOST_OUT_EXECUTABLES)/mkfile$(HOST_EXECUTABLE_SUFFIX)```$(MKFILE)其实就是执行了out/host/linux-x86/bin/mkfile，这个可执行文件也是厂商定制的，在DISTTOOLS里也被引用到。其源码在system/core/mkfile里，其实就是实现了写文件的功能。来看下源码      
+
+```c
+/* tools/mkfile/mkfile.c
+**
+** Copyright 2007, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#include "mkfile.h"
+
+static void *load_file(const char *fn, unsigned *_sz)
+{
+    char *data;
+    int sz;
+	int r_sz = 0;
+	int read_sz = 0;
+    int fd;
+
+    data = 0;
+    fd = open(fn, O_RDONLY);
+    if(fd < 0) return 0;
+
+    // seek到文件尾，来算出总的size，保存到sz里
+    sz = lseek(fd, 0, SEEK_END);
+    if(sz < 0) goto oops;
+	// 回到文件头
+    if(lseek(fd, 0, SEEK_SET) != 0) goto oops;
+
+	r_sz = sz;
+	if((_sz)
+		&&(*_sz > 0))// 加载整个升级包文件时，给的参数*_sz=0，这里就用这里算出来的r_sz
+		r_sz = *_sz;// 加载md5文件时，传入了*_sz=196
+    // 给data分配内存
+    data = (char*) malloc(r_sz);
+    if(data == 0) goto oops;
+    // 初始化为0x0
+	memset(data,0x0,r_sz);
+	
+    // 如果传入的要读取size超过了文件本身的size，则只读取文件大小这么多的内容，否则就按指定的读
+	sz = (r_sz>sz)?sz:r_sz;
+    if(read(fd, data, sz) != sz) goto oops;
+    close(fd);
+
+    if(_sz) *_sz = r_sz;// 返回读到的size
+    return data;// 返回读到的文件内容
+
+oops:
+    close(fd);
+    if(data != 0) free(data);
+    return 0;
+}
+
+int usage(void)
+{
+    fprintf(stderr,"usage: mkfile v1.0 by Harrison\n"
+            "       --file <filename>\n"
+            "       --prefix <filename>\n"
+            "       --suffix <filename>\n"
+            "       [ --prefix_size <size> ]\n"
+            "       [ --suffix_size <size> ]\n"
+            "       -o|--output <filename>\n"
+            );
+    return 1;
+}
+
+
+int main(int argc, char **argv)
+{
+    char *infile_fn = 0;
+    void *infile_data = 0;
+    char *prefix_fn = 0;
+    void *prefix_data = 0;
+    char *suffix_fn = 0;
+    void *suffix_data = 0;
+    char *output = 0;
+    int fd;
+    unsigned prefix_size	= 0x0;
+    unsigned suffix_size	= 0x0;
+	unsigned infile_size    = 0x0;
+
+    argc--;
+    argv++;
+
+    // 解析参数，命令：mkfile --file $(INTERNAL_OTA_PACKAGE_TARGET) --suffix $(PRODUCT_OUT)/ota_md5.txt --suffix_size 196 --output $@
+    // $@代表目标文件的名称简写
+    while(argc > 0){
+        char *arg = argv[0];
+        char *val = argv[1];
+        if(argc < 2) {
+            return usage();
+        }
+        argc -= 2;
+        argv += 2;
+        if(!strcmp(arg, "--output") || !strcmp(arg, "-o")) {
+            output = val;// 输出文件，必要的
+        } else if(!strcmp(arg, "--file")) {
+            infile_fn = val;// 输入的升级包文件，必要的
+        } else if(!strcmp(arg, "--prefix")) {
+            prefix_fn = val;// 写在文件前缀的？没有用到
+        } else if(!strcmp(arg, "--suffix")) {
+            suffix_fn = val;// 写在文件后缀的，这里就是输入的md5文件，必要的
+        } else if(!strcmp(arg, "--prefix_size")) {
+            prefix_size = strtoul(val, 0, 0);// 写到前缀的size，没有用到
+        } else if(!strcmp(arg, "--suffix_size")) {
+            suffix_size = strtoul(val, 0, 0);// 写到后缀的字节数，必要的，这里是196，这个对后面对应的修改读md5和签名的信息非常关键，换算下就是22个字节
+        } else {
+            return usage();
+        }
+    }
+
+    if(output == 0) {
+        fprintf(stderr,"error: no output filename specified\n");
+        return usage();
+    }
+
+    if(infile_fn == 0) {
+        fprintf(stderr,"error: no input file specified\n");
+        return usage();
+    }
+
+    if((prefix_fn == 0)
+			&&(suffix_fn == 0)){
+        fprintf(stderr,"error: no prefix and suffix specified\n");
+        return usage();
+    }
+
+#if 0
+    if((prefix_fn != 0)
+			&&(prefix_size <= 0)){
+        fprintf(stderr,"error: prefix size is less than zero\n");
+        return usage();
+    }
+
+    if((suffix_fn != 0)
+			&&(suffix_size <= 0)){
+        fprintf(stderr,"error: suffix size is less than zero\n");
+        return usage();
+    }
+#endif
+
+    infile_data = load_file(infile_fn, &infile_size);// 加载升级包文件内容
+    if(infile_data == 0) {
+        fprintf(stderr,"error: could not load file '%s'\n", infile_fn);
+        return 1;
+    }
+
+    if(prefix_fn) {
+        prefix_data = load_file(prefix_fn, &prefix_size);
+        if(prefix_data == 0) {
+            fprintf(stderr,"error: could not load prefix '%s'\n", prefix_fn);
+            return 1;
+        }
+    }
+
+    if(suffix_fn) {
+        suffix_data = load_file(suffix_fn, &suffix_size);// 加载md5文件内容的指定位数
+        if(suffix_data == 0) {
+            fprintf(stderr,"error: could not load suffix '%s'\n", suffix_fn);
+            return 1;
+        }
+    }
+
+
+    fd = open(output, O_CREAT | O_TRUNC | O_WRONLY, 0644);// 打开输出文件
+    if(fd < 0) {
+        fprintf(stderr,"error: could not create '%s'\n", output);
+        return 1;
+    }
+
+    // 先往输出文件里写入升级包内容
+    if(write(fd, infile_data, infile_size) != infile_size) goto fail;
+    
+    if(prefix_fn&&prefix_size) {
+		if(write(fd, prefix_data, prefix_size) != prefix_size) goto fail;
+	}
+
+    // 往输出文件里写入md5内容
+    if(suffix_fn&&suffix_size) {
+		if(write(fd, suffix_data, suffix_size) != suffix_size) goto fail;
+	}
+
+pass:
+	if(infile_data)
+		free(infile_data);
+	if(prefix_data)
+		free(prefix_data);
+	if(suffix_data)
+		free(suffix_data);
+	return 0;
+fail:
+    unlink(output);
+    close(fd);
+    fprintf(stderr,"error: failed writing '%s': %s\n", output,
+            strerror(errno));
+    return 1;
+}
+```
+
+最后需要提到的是，google原生的流程是在包做好之后，往文件尾追加签名，而这里又往文件尾追加了196字节的md5信息，所以google原生的RecoverySystem里verifyPackage部分校验签名的逻辑需要改动，在读取签名信息时需要增加196个字节的offset，同样在recovery里的install.c里校验签名时也要同样传入一个MD5_HEADER_SIZE=196的offset，这部分后面在讲到升级包安装时会详细讲到，这里只要大概理解这一整套对应的设计就好。  
 
 #### 增量包
+
+增量包就是两个版本（基础版本和目标版本）之间的差异，它的功能就是在基础版本上安装对应的增量包，使系统文件升级到目标版本。  
+
+增量包的制作，需要的原料：1、两个版本的target-files package，这个在全量包制作中介绍了通过make otapackage会首先生成target-files package；2、制作升级包用到的工具，签名工具，制作patch工具（bsdiff、imgdiff），打包资源工具等等；3、签名  
+
+增量包的制作命令```./build/tools/releasetools/ota_from_target_files -v -i target-files-old.zip target-files-new.zip -k build/target/product/security/releasekey update-out.zip```。先来解析一下命令本身：-v参数前面已经介绍过了，冗余模式，输出日志；-k参数前面也提到过，是用于指定签名的。前面也提到了不指定签名的话，默认密钥对会用device下配置的PRODUCT_DEFAULT_DEV_CERTIFICATE，也就是releasekey；-i增量包模式，-i后面的参数会被解析为基础版本的target-file，作为生成包的原料；然后两个参数是目标版本的target-file和输出文件的指定名称。来看下脚本，还是从ota-from-target-files的main入手  
+
+```python
+def main(argv):
+    ...
+    print "unzipping target target-files..."
+    ### 这里的args[0]也就是原料1（target-files-new.zip），先会被解压
+    ### 生成一个有名字的临时目录存到OPTIONS.input_tmp，另外会保留一个input_zip对象来访问压缩包本身
+  	OPTIONS.input_tmp, input_zip = common.UnzipTemp(args[0])
+    ...
+    if OPTIONS.incremental_source is None:### -i参数
+        WriteFullOTAPackage(input_zip, output_zip)
+        if OPTIONS.package_key is None:
+          OPTIONS.package_key = OPTIONS.info_dict.get(
+              "default_system_dev_certificate",
+              "build/target/product/security/testkey")
+  	else:### 增量包走这里
+    	print "unzipping source target-files..."
+        ### 原料2来了，将-i指定的参数（target-files-old.zip）解开并返回目录和一个指向压缩包本身的source_zip对象
+        OPTIONS.source_tmp, source_zip = common.UnzipTemp(OPTIONS.incremental_source)
+        ### 参考前面的LoadInfoDict作用，基本上就是将META/misc_info.txt里的信息加载进来
+        OPTIONS.target_info_dict = OPTIONS.info_dict
+        OPTIONS.source_info_dict = common.LoadInfoDict(source_zip)
+        if OPTIONS.package_key is None:### 签名密钥对
+          OPTIONS.package_key = OPTIONS.source_info_dict.get(
+              "default_system_dev_certificate",
+              "build/target/product/security/testkey")
+        if OPTIONS.verbose:
+          print "--- source info ---"
+          common.DumpInfoDict(OPTIONS.source_info_dict)
+        ### 0 重点是都是在WriteIncrementalOTAPackage里做的，传入的三个参数，目标target-file，基础target-file，生成文件
+        WriteIncrementalOTAPackage(input_zip, source_zip, output_zip)
+        ...
+        ### 签名
+        SignOutput(temp_zip_file.name, args[1])
+        ...
+```
+
+##### WriteIncrementalOTAPackage
+
+差分包的内容做起来就比全量包复杂很多了，全量包只是从target-file里取需要的东西攒成一个包，差分包需要对两个target-file里需要的东西做比较，然后生成补丁，还要去比较文件的减少和增加等等，我们一起来看下脚本里的内容  
+
+```python
+def WriteIncrementalOTAPackage(target_zip, source_zip, output_zip):
+  ### 1 读到misc.info里的recovery_api_version
+  source_version = OPTIONS.source_info_dict["recovery_api_version"]
+  target_version = OPTIONS.target_info_dict["recovery_api_version"]
+
+  if source_version == 0:
+    print ("WARNING: generating edify script for a source that "
+           "can't install it.")
+  ### 2 初始化升级脚本，用的是基础版本的recovery_api_version，目标版本的info_dict信息
+  script = edify_generator.EdifyGenerator(source_version,
+                                          OPTIONS.target_info_dict)
+
+  ### 3 初始化metadata，pre-device肯定是基础版本里的产品名，需要跟实际待升级的设备里的信息做对比
+  metadata = {"pre-device": GetBuildProp("ro.product.device",
+                                         OPTIONS.source_info_dict),
+              ### 时间戳是目标版本的，晚于这个时间戳的设备不能升级
+              "post-timestamp": GetBuildProp("ro.build.date.utc",
+                                             OPTIONS.target_info_dict),
+              }
+
+  ### 4 device_sepcific的初始化，参考上面的WriteFullOTAPackage
+  device_specific = common.DeviceSpecificParams(
+      source_zip=source_zip,
+      source_version=source_version,
+      target_zip=target_zip,
+      target_version=target_version,
+      output_zip=output_zip,
+      script=script,
+      metadata=metadata,
+      info_dict=OPTIONS.info_dict)
+
+  ### 5 需要加载两个target-file包里的system目录内容
+  print "Loading target..."
+  target_data = LoadSystemFiles(target_zip)
+  print "Loading source..."
+  source_data = LoadSystemFiles(source_zip)
+
+  verbatim_targets = []### 需要完整拷贝的文件列表
+  patch_list = []### patch列表
+  diffs = []### 差异列表
+  largest_source_size = 0
+  for fn in sorted(target_data.keys()):### 目标文件列表按照名字排序，然后循环读取filename
+    tf = target_data[fn]### 根据filename读到common.File文件对象
+    assert fn == tf.name### 检查文件对象里存的文件名跟filename是否一致
+    sf = source_data.get(fn, None)### 读到基础文件列表中的文件对象
+
+    ### 6 这一步里将分出哪些文件是新增的，不需要打patch的和有差别需要打patch的
+    ### 如果基础文件列表中不存在该文件，说明此文件是新增的，需要完整拷贝
+    ### 如果是定义在需要完整拷贝目录里的文件，也是不做差分的
+    if sf is None or fn in OPTIONS.require_verbatim:
+      # This file should be included verbatim
+      if fn in OPTIONS.prohibit_verbatim:### 禁止直接拷贝的
+        raise common.ExternalError("\"%s\" must be sent verbatim" % (fn,))
+      print "send", fn, "verbatim"
+      tf.AddToZip(output_zip)### 文件直接添加到输出文件里，如何添加的见后面的AddToZip
+      verbatim_targets.append((fn, tf.size))### verbatim_targets列表里保存文件名和size
+    elif tf.sha1 != sf.sha1:### 根据sha1值来比较文件是否相同，不同的添加到diffs列表中，后面做差分计算
+      # File is different; consider sending as a patch
+      diffs.append(common.Difference(tf, sf))
+    else:
+      # Target file identical to source.
+      pass
+
+  ### 7 差分计算来了
+  common.ComputeDifferences(diffs)
+
+  ### 遍历diffs，这里的diffs经过上面的ComputeDifferences，已经算出了patch文件了
+  for diff in diffs:
+    tf, sf, d = diff.GetPatch()### 取到patch到d中
+    ### 如果没有生成patch，或者patch大小接近tf源文件的大小，就直接拷贝吧，不用打patch，后面安装时再安装patch了
+    ### patch_threshold=0.95，这里也可以自己改，比如说1。原生的设定为0.95的原因，可能是考虑到即使patch比源文件小了5%，但是这个弥补不了后面打patch的时间消耗吧，就看空间和时间的权衡了。
+    if d is None or len(d) > tf.size * OPTIONS.patch_threshold:
+      # patch is almost as big as the file; don't bother patching
+      tf.AddToZip(output_zip)
+      verbatim_targets.append((tf.name, tf.size))
+    else:
+      ### 写入到输出文件中的patch目录下，例如patch/system/app/xxx.apk.p
+      common.ZipWriteStr(output_zip, "patch/" + tf.name + ".p", d)
+      patch_list.append((tf.name, tf, sf, tf.size, common.sha1(d).hexdigest()))
+      largest_source_size = max(largest_source_size, sf.size)
+  ### metadata中的fingerprint
+  source_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.source_info_dict)
+  target_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.target_info_dict)
+  metadata["pre-build"] = source_fp
+  metadata["post-build"] = target_fp
+
+  ### updater-script脚本中写入挂载/system分区的语句，用于recovery模式下升级的第一步
+  script.Mount("/system")
+  ### 往updater-script脚本里写入校验fingerprint的语句，例如：
+  """
+  file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/173:user/dev-keys" ||
+    file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/175:user/dev-keys" ||
+    abort("Package expects build fingerprint of Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/173:user/dev-keys or Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/175:user/dev-keys this device has " + getprop("ro.build.fingerprint") + ".");
+  """
+  ### 可以理解fingerprint应该是基础版本的fingerprint，不太理解设备的fingerprint也可以是目标版本的fingerprint？
+  script.AssertSomeFingerprint(source_fp, target_fp)
+
+  ### 取到基础版本和目标版本的boot.img和recovery.img
+  source_boot = common.GetBootableImage(
+      "/tmp/boot.img", "boot.img", OPTIONS.source_tmp, "BOOT",
+      OPTIONS.source_info_dict)
+  target_boot = common.GetBootableImage(
+      "/tmp/boot.img", "boot.img", OPTIONS.target_tmp, "BOOT")
+  updating_boot = (source_boot.data != target_boot.data)
+
+  source_recovery = common.GetBootableImage(
+      "/tmp/recovery.img", "recovery.img", OPTIONS.source_tmp, "RECOVERY",
+      OPTIONS.source_info_dict)
+  target_recovery = common.GetBootableImage(
+      "/tmp/recovery.img", "recovery.img", OPTIONS.target_tmp, "RECOVERY")
+  updating_recovery = (source_recovery.data != target_recovery.data)
+
+  # Here's how we divide up the progress bar:
+  #  0.1 for verifying the start state (PatchCheck calls)
+  #  0.8 for applying patches (ApplyPatch calls)
+  #  0.1 for unpacking verbatim files, symlinking, and doing the
+  #      device-specific commands.
+
+  ### 加入判断产品名称的语句
+  ### getprop("ro.product.device") == "xe110bm" || abort("This package is for \"xe110bm\" devices; this is a \"" + getprop("ro.product.device") + "\".");
+  AppendAssertions(script, OPTIONS.target_info_dict)
+  ### 额外的脚本，基础信息判断阶段：releasetools.py
+  device_specific.IncrementalOTA_Assertions()
+
+  script.Print("Verifying current system...")
+
+  ### ### 额外的脚本，校验阶段：releasetools.py
+  device_specific.IncrementalOTA_VerifyBegin()
+
+  script.ShowProgress(0.1, 0)
+  ### 计算总共的patch size
+  ### patch_list的数据格式：tf.name, tf, sf, tf.size, common.sha1(d).hexdigest()
+  ### patch_list[2]为sf
+  total_verify_size = float(sum([i[2].size for i in patch_list]) + 1)
+  if updating_boot:
+    total_verify_size += source_boot.size
+  so_far = 0### 当前打了多少size的patch了
+
+  for fn, tf, sf, size, patch_sha in patch_list:
+    ### 插入检查patch语句，例如
+    ### apply_patch_check("/system/app/Bluetooth.odex", "7d6106ea73c691948bacf4e7a05e9922d069b4ae", "a27db9b1acefe80390daceed3f31c016e168deee") || abort("\"/data/update_s/system/app/Bluetooth.odex\" has unexpected contents.");
+    script.PatchCheck("/"+fn, tf.sha1, sf.sha1)
+    so_far += sf.size
+    ### 按照文件size动态计算升级进度，因为total_verify_size用的是sf的总size，so_far用的也是sf的单个size，对应起来就可以了，我们也可以用tf的
+    script.SetProgress(so_far / total_verify_size)
+
+  if updating_boot:
+    ### 计算boot.img的patch
+    d = common.Difference(target_boot, source_boot)
+    _, _, d = d.ComputePatch()
+    print "boot      target: %d  source: %d  diff: %d" % (
+        target_boot.size, source_boot.size, len(d))
+	### 写入boot.img.p
+    common.ZipWriteStr(output_zip, "patch/boot.img.p", d)
+
+    ### GetTypeAndDevice就是从recovery.fstab里找到指定的“/boot”分区
+    boot_type, boot_device = common.GetTypeAndDevice("/boot", OPTIONS.info_dict)
+	### 写入检查boot.img的patch语句
+    script.PatchCheck("%s:%s:%d:%s:%d:%s" %
+                      (boot_type, boot_device,
+                       source_boot.size, source_boot.sha1,
+                       target_boot.size, target_boot.sha1))
+    so_far += source_boot.size
+    script.SetProgress(so_far / total_verify_size)
+
+  if patch_list or updating_recovery or updating_boot:
+    ### 插入检查system分区下，是否有足够大的空间来用作检查patch，largest_source_size是最大的sf大小
+    ### apply_patch_space(78271148) || abort("Not enough free space on /system to apply patches.");
+    script.CacheFreeSpaceCheck(largest_source_size)
+
+  ### 额外的脚本，校验结束
+  device_specific.IncrementalOTA_VerifyEnd()
+
+  ### 开始写入打patch开始的语句
+  script.Comment("---- start making changes here ----")
+
+  ### 额外的脚本，开始安装
+  device_specific.IncrementalOTA_InstallBegin()
+
+  ### 是否清data，-w参数
+  if OPTIONS.wipe_user_data:
+    script.Print("Erasing user data...")
+    script.FormatPartition("/data")
+
+  ### 删除不需要的文件
+  ### 前面已经列出了如何计算多出来的文件、需要直接拷贝的文件和需要打patch的文件，而这里就是最后一类，需要删除的问题，来源来三个：需要直接拷贝的文件，先删除，后拷贝；基础包里有目标包里没有的；recovery.img
+  ### delete("/system/media/audio/ringtones/Acheron.ogg");
+  script.Print("Removing unneeded files...")
+  script.DeleteFiles(["/"+i[0] for i in verbatim_targets] +
+                     ["/"+i for i in sorted(source_data)
+                            if i not in target_data] +
+                     ["/system/recovery.img"])
+
+  script.ShowProgress(0.8, 0)
+  ### 安装patch阶段的动态进度计算
+  total_patch_size = float(sum([i[1].size for i in patch_list]) + 1)
+  if updating_boot:
+    total_patch_size += target_boot.size
+  so_far = 0
+
+  script.Print("Patching system files...")
+  deferred_patch_list = []
+  for item in patch_list:
+    fn, tf, sf, size, _ = item
+    if tf.name == "system/build.prop":###对build.prop特殊对待，怎么对待见后面
+      deferred_patch_list.append(item)
+      continue
+    ### 往updater-script中加入安装patch的语句
+    """
+    apply_patch("/system/app/XCLauncher3.odex", "-",
+            a07d79603cc558f9994217e620fc7aacd7595e1e, 4021976,
+            a4b903482882fe43b68b2dfb9f5ad77b619f263b, package_extract_file("patch/system/app/XCLauncher3.odex.p"));
+    """
+    ### ApplyPatch的详解见后面
+    script.ApplyPatch("/"+fn, "-", tf.size, tf.sha1, sf.sha1, "patch/"+fn+".p")
+    so_far += tf.size
+    script.SetProgress(so_far / total_patch_size)
+
+  if updating_boot:
+    # Produce the boot image by applying a patch to the current
+    # contents of the boot partition, and write it back to the
+    # partition.
+    ### 升级boot image
+    script.Print("Patching boot image...")
+    script.ApplyPatch("%s:%s:%d:%s:%d:%s"
+                      % (boot_type, boot_device,
+                         source_boot.size, source_boot.sha1,
+                         target_boot.size, target_boot.sha1),
+                      "-",
+                      target_boot.size, target_boot.sha1,
+                      source_boot.sha1, "patch/boot.img.p")
+    so_far += target_boot.size
+    script.SetProgress(so_far / total_patch_size)
+    print "boot image changed; including."
+  else:
+    print "boot image unchanged; skipping."
+
+  if updating_recovery:
+    # Recovery is generated as a patch using both the boot image
+    # (which contains the same linux kernel as recovery) and the file
+    # /system/etc/recovery-resource.dat (which contains all the images
+    # used in the recovery UI) as sources.  This lets us minimize the
+    # size of the patch, which must be included in every OTA package.
+    #
+    # For older builds where recovery-resource.dat is not present, we
+    # use only the boot image as the source.
+
+    MakeRecoveryPatch(OPTIONS.target_tmp, output_zip,
+                      target_recovery, target_boot)
+    script.DeleteFiles(["/system/recovery-from-boot.p",
+                        "/system/etc/install-recovery.sh"])
+    print "recovery image changed; including as patch from boot."
+  else:
+    print "recovery image unchanged; skipping."
+
+  script.ShowProgress(0.1, 10)
+
+  ### CopySystemFiles的介绍见前面，在制作全量包时有两个功能，如果是可执行文件，则创建符号链接；其他文件则直接拷贝到全量包中。这里增量包的话参数2为None，所以其他文件不需要拷贝到升级包中，其他文件在前面已经做了补丁了。
+  target_symlinks = CopySystemFiles(target_zip, None)
+
+  target_symlinks_d = dict([(i[1], i[0]) for i in target_symlinks])
+  ### 建一个临时升级脚本
+  temp_script = script.MakeTemporary()
+  ### 去读target-file里的META/filesystem_config.txt，里面都是系统文件的selinux权限配置
+  ### system/fonts/DroidSerif-BoldItalic.ttf 0 0 644 selabel=u:object_r:system_file:s0 capabilities=0x0
+  Item.GetMetadata(target_zip)
+  Item.Get("system").SetPermissions(temp_script)
+
+  # Note that this call will mess up the tree of Items, so make sure
+  # we're done with it.
+  source_symlinks = CopySystemFiles(source_zip, None)
+  source_symlinks_d = dict([(i[1], i[0]) for i in source_symlinks])
+
+  # Delete all the symlinks in source that aren't in target.  This
+  # needs to happen before verbatim files are unpacked, in case a
+  # symlink in the source is replaced by a real file in the target.
+  ### 基础包里有，目标包里没有的symlink文件，需要先删除，免得后面解压verbatim_targets时被覆盖掉，这里也没想明白为什么基础包里有，目标包里没有，但是verbatim_targets里会有，难道是额外定义的OPTIONS.require_verbatim，没遇到过这种场景？
+  to_delete = []
+  for dest, link in source_symlinks:
+    if link not in target_symlinks_d:
+      to_delete.append(link)
+  script.DeleteFiles(to_delete)
+  ### 解压新文件到system分区
+  ### 其实就是从升级包中的system目录下复制到系统的/system下
+  ### package_extract_dir("data/update_s/system", "/data/update_s/system");
+  if verbatim_targets:
+    script.Print("Unpacking new files...")
+    script.UnpackPackageDir("system", "/system")
+
+  if updating_recovery:
+    script.Print("Unpacking new recovery...")
+    script.UnpackPackageDir("recovery", "/system")
+
+  script.Print("Symlinks and permissions...")
+
+  # Create all the symlinks that don't already exist, or point to
+  # somewhere different than what we want.  Delete each symlink before
+  # creating it, since the 'symlink' command won't overwrite.
+  to_create = []
+  for dest, link in target_symlinks:
+    if link in source_symlinks_d:### 如果目标symlink没在源中，加入到待创建列表
+      ### 目标symlink跟源不同，也加入到待创建列表
+      if dest != source_symlinks_d[link]:
+        to_create.append((dest, link))
+    else:
+      to_create.append((dest, link))
+  ### 先删除，后创建
+  script.DeleteFiles([i[1] for i in to_create])
+  script.MakeSymlinks(to_create)
+
+  # Now that the symlinks are created, we can set all the
+  # permissions.
+  ### 将放置symlink的temp_script添加到正式的script中
+  script.AppendScript(temp_script)
+
+  # Do device-specific installation (eg, write radio image).
+  ### 额外的脚本，安装结束阶段
+  device_specific.IncrementalOTA_InstallEnd()
+
+  ### 额外的脚本，-e参数，差分包里一般没有，我们也可以用这种方式来定制额外的命令
+  if OPTIONS.extra_script is not None:
+    script.AppendExtra(OPTIONS.extra_script)
+
+  # Patch the build.prop file last, so if something fails but the
+  # device can still come up, it appears to be the old build and will
+  # get set the OTA package again to retry.
+  script.Print("Patching remaining system files...")
+  ### 这里就是对build.prop的例外处理，为了保证升级失败之后依旧可以开机，加入build.prop放在前面升级，后面升失败了，那么很可能就无法开机
+  for item in deferred_patch_list:
+    fn, tf, sf, size, _ = item
+    script.ApplyPatch("/"+fn, "-", tf.size, tf.sha1, sf.sha1, "patch/"+fn+".p")
+  ### 设置build.prop的权限
+  script.SetPermissions("/system/build.prop", 0, 0, 0644, None, None)
+  ### 前面介绍过此函数，拷贝最终的升级脚本和update-binary
+  ### 这里传入的target_zip是用来拷贝目标版本里的update-binary的，这个会有个什么结果呢？update-binary是用来控制和安装升级的可执行文件，升级时，会先把这个文件从压缩包里找出来然后去执行它，所以我们在升级一个老版本时，升级控制程序却用的是新的，所以我们可以用这个update-binary来做一些额外的事情再升级时去做一些额外的事情。
+  script.AddToZip(target_zip, output_zip)
+  ### 写入metadata
+  WriteMetadata(metadata, output_zip)
+```
+
+###### LoadSystemFiles
+
+```python
+def LoadSystemFiles(z):
+  """Load all the files from SYSTEM/... in a given target-files
+  ZipFile, and return a dict of {filename: File object}."""
+  out = {}
+  for info in z.infolist():
+    if info.filename.startswith("SYSTEM/") and not IsSymlink(info):
+      basefilename = info.filename[7:]
+      fn = "system/" + basefilename
+      data = z.read(info.filename)
+      out[fn] = common.File(fn, data)
+  return out
+```
+
+加载target-file包里SYSTEM/下的非symlink文件，文件名用”system“替换掉”SYSYEM“，out列表里每一项存的是一个文件对象，包括了文件名、文件数据、文件大小和sha1值，参考如下  
+
+```python
+class File(object):
+  def __init__(self, name, data):
+    self.name = name
+    self.data = data
+    self.size = len(data)
+    self.sha1 = sha1(data).hexdigest()
+```
+
+###### OPTIONS.require_verbatim
+
+```python
+OPTIONS.require_verbatim = set()
+OPTIONS.prohibit_verbatim = set(("system/build.prop",))
+```
+
+require_verbatim这里是初始化了一个空的字典，如果需要的话可以做定制。为什么prohibit_verbatim里有build.prop，我思考了一下，有一个解释是，如果基础版本的target-file里build.prop是空的，那这个是不合理的，也就是说可以防止一些必要的文件在基础包里不存在。  
+
+###### common.File.AddToZip
+
+```python
+def AddToZip(self, z):
+    ZipWriteStr(z, self.name, self.data)
+```
+
+```python
+def ZipWriteStr(zip, filename, data, perms=0644):
+  # use a fixed timestamp so the output is repeatable.
+  zinfo = zipfile.ZipInfo(filename=filename,
+                          date_time=(2009, 1, 1, 0, 0, 0))
+  zinfo.compress_type = zip.compression
+  zinfo.external_attr = perms << 16
+  zip.writestr(zinfo, data)
+```
+
+###### common.ComputeDifferences
+
+```python
+def ComputeDifferences(diffs):
+  """Call ComputePatch on all the Difference objects in 'diffs'."""
+  print len(diffs), "diffs to compute"
+
+  # Do the largest files first, to try and reduce the long-pole effect.
+  
+  by_size = [(i.tf.size, i) for i in diffs]###[size, File]
+  by_size.sort(reverse=True)### 按照文件size逆序排，避免长极效应，因为是多线程，让最大的文件最早做，减少等待时间
+  by_size = [i[1] for i in by_size]### [File]
+
+  lock = threading.Lock()
+  diff_iter = iter(by_size)   # accessed under lock
+
+  def worker():
+    try:
+      lock.acquire()
+      for d in diff_iter:
+        lock.release()
+        start = time.time()
+        d.ComputePatch()### 8 计算patch
+        dur = time.time() - start
+        lock.acquire()
+
+        tf, sf, patch = d.GetPatch()### 9 取到目标文件、基础文件和patch
+        if sf.name == tf.name:
+          name = tf.name
+        else:### 怎么还会出现文件名不一直的情况？只做了目标文件名跟文件内容里的文件名的校验，而文件内容是直接通过压缩包的read方法读到的，可能跟文件名称不同？
+          name = "%s (%s)" % (tf.name, sf.name)
+        if patch is None:
+          print "patching failed!                                  %s" % (name,)
+        else:
+          print "%8.2f sec %8d / %8d bytes (%6.2f%%) %s" % (
+              dur, len(patch), tf.size, 100.0 * len(patch) / tf.size, name)
+      lock.release()
+    except Exception, e:
+      print e
+      raise
+
+  # start worker threads; wait for them all to finish.
+  ### 多线程启动计算patch任务
+  threads = [threading.Thread(target=worker)
+             for i in range(OPTIONS.worker_threads)]
+  for th in threads:
+    th.start()
+  while threads:
+    threads.pop().join()
+```
+
+###### common.Difference.ComputePatch
+
+```python
+def ComputePatch(self):
+    """Compute the patch (as a string of data) needed to turn sf into
+    tf.  Returns the same tuple as GetPatch()."""
+
+    tf = self.tf
+    sf = self.sf
+    ### 初始化时默认diff_program=None，见下面的初始化代码
+    if self.diff_program:
+      diff_program = self.diff_program
+    else:
+      ext = os.path.splitext(tf.name)[1]### 取到文件扩展名
+      diff_program = DIFF_PROGRAM_BY_EXT.get(ext, "bsdiff")### 根据扩展名从DIFF_PROGRAM_BY_EXT里找到合适的差分工具，DIFF_PROGRAM_BY_EXT见后面代码
+
+    ### 将tf和sf分别写入到一个命名的临时文件里
+    ttemp = tf.WriteToTemp()
+    stemp = sf.WriteToTemp()
+	### 取到扩展名
+    ext = os.path.splitext(tf.name)[1]
+
+    try:
+      ### 建立一个临时文件，用来存放patch
+      ptemp = tempfile.NamedTemporaryFile()
+      ### 构建一个列表类型的命令，格式为[diff_program, stemp, ttemp, ptemp]
+      if isinstance(diff_program, list):
+        cmd = copy.copy(diff_program)
+      else:
+        cmd = [diff_program]
+      cmd.append(stemp.name)
+      cmd.append(ttemp.name)
+      cmd.append(ptemp.name)
+      ### 起个子线程来执行构造好的命令，至于bsdiff/imgdiff工具是如何算出两个文件差异的，这个后面会专门开一篇来研究下
+      p = Run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      _, err = p.communicate()
+      if err or p.returncode != 0:
+        print "WARNING: failure running %s:\n%s\n" % (diff_program, err)
+        return None
+      ### 从临时文件里读到diff
+      diff = ptemp.read()
+    finally:
+      ptemp.close()
+      stemp.close()
+      ttemp.close()
+
+    self.patch = diff### 赋值到patch里，后面返回
+    return self.tf, self.sf, self.patch
+```
+
+```python
+class Difference(object):
+  def __init__(self, tf, sf, diff_program=None):
+    self.tf = tf
+    self.sf = sf
+    self.patch = None
+    self.diff_program = diff_program
+```
+
+```python
+DIFF_PROGRAM_BY_EXT = {
+    ### 默认的用bsdiff，这些压缩格式的用imgdiff效率会高一点
+    ".gz" : "imgdiff",
+    ".zip" : ["imgdiff", "-z"],
+    ".jar" : ["imgdiff", "-z"],
+    ".apk" : ["imgdiff", "-z"],
+    ".img" : "imgdiff",
+    }
+```
+
+###### common.File.WriteToTemp
+
+```python
+def WriteToTemp(self):
+    t = tempfile.NamedTemporaryFile()
+    t.write(self.data)
+    t.flush()
+    return t
+```
+
+###### common.Difference.GetPatch
+
+```python
+def GetPatch(self):
+    """Return a tuple (target_file, source_file, patch_data).
+    patch_data may be None if ComputePatch hasn't been called, or if
+    computing the patch failed."""
+    return self.tf, self.sf, self.patch
+```
+
+###### edify_generator.DeleteFiles
+
+```python
+def DeleteFiles(self, file_list):
+    """Delete all files in file_list."""
+    if not file_list: return
+    cmd = "delete(" + ",\0".join(['"%s"' % (i,) for i in file_list]) + ");"
+    self.script.append(self._WordWrap(cmd))
+```
+
+###### edify_generator.ApplyPatch
+
+```python
+def ApplyPatch(self, srcfile, tgtfile, tgtsize, tgtsha1, *patchpairs):
+    """Apply binary patches (in *patchpairs) to the given srcfile to
+    produce tgtfile (which may be "-" to indicate overwriting the
+    source file."""
+    ### 调用的方式：script.ApplyPatch("/"+fn, "-", tf.size, tf.sha1, sf.sha1, "patch/"+fn+".p")
+    ### 输出的结果：
+    """
+    apply_patch("/system/app/XCLauncher3.odex", "-",
+            a07d79603cc558f9994217e620fc7aacd7595e1e, 4021976,
+            a4b903482882fe43b68b2dfb9f5ad77b619f263b, package_extract_file("patch/data/update_s/system/app/XCLauncher3.odex.p"));
+    """
+    ### srcfile对应源文件名，tgtfile对应-，代表直接复写到源文件上，tgtsize对应目标文件大小，tgtsha1代表目标文件sha1，大小和sha1可以用于升级完之后的校验，而传入的sf.sha1和patch作为patchpairs参数了，因为可以不止一个patch，所以要对patchpairs做求偶校验
+    if len(patchpairs) % 2 != 0 or len(patchpairs) == 0:
+      raise ValueError("bad patches given to ApplyPatch")
+    cmd = ['apply_patch("%s",\0"%s",\0%s,\0%d'
+           % (srcfile, tgtfile, tgtsha1, tgtsize)]
+    for i in range(0, len(patchpairs), 2):
+      ### 插入sf.sha1和patch
+      cmd.append(',\0%s, package_extract_file("%s")' % patchpairs[i:i+2])
+    cmd.append(');')
+    cmd = "".join(cmd)
+    self.script.append(self._WordWrap(cmd))
+```
 
 
 
@@ -1638,3 +2806,20 @@ target-files压缩包里的数据有问题，再LoadInfoDict的时候会发现�
 ####  4 OPTIONS.device_specific的额外命令定制
 
 尝试用此方法来做定制，成功的话则可以用于额外命令的统一添加实现  
+
+#### 5 差分包写入fingerprint定制错误
+
+在厂商定制做差分包的WriteIncrementalOTAPackage方法里，写入fingerprint校验语句时，多传了一个参数，这里应该是错误了，使用的语句为  
+
+```script.AssertSomeFingerprint(source_fp, target_fp, OPTIONS.src_file+"system")```
+
+生成的结果为  
+
+```xml
+file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/173:user/dev-keys" ||
+    file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/175:user/dev-keys" ||
+    file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "/data/update_s/system" ||
+    abort("Package expects build fingerprint of Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/173:user/dev-keys or Freescale/xe110bm/xe110bm:4.4.2/ECARX_Gen1.0/175:user/dev-keys or /data/update_s/system; this device has " + getprop("ro.build.fingerprint") + ".");
+```
+
+这里file_getprop("/data/update_s/system/build.prop", "ro.build.fingerprint") == "/data/update_s/system"这一句肯定是有毛病  
