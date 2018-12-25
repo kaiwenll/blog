@@ -1188,7 +1188,7 @@ def WriteFullOTAPackage(input_zip, output_zip):
                                              OPTIONS.info_dict),
               }
 
-  ### device_specific标示了额外的执行工具和脚本，在原生的ota_from_target_files的main函数里如果OPTIONS.device_specific为空，则用OPTIONS.info_dict.get("tool_extensions", None)这个值，这个也就是META/misc_info.txt里的tool_extensions，这里后续可以尝试下自己加个额外的脚本，看看能不能用来实现最简单的添加方式。在[厂商定制]里，添加了一个-s参数，用来直接指定OPTIONS.device_specific参数
+  ### device_specific标示了额外的执行工具和脚本，在原生的ota_from_target_files的main函数里如果OPTIONS.device_specific为空，则用OPTIONS.info_dict.get("tool_extensions", None)这个值，这个也就是META/misc_info.txt里的tool_extensions，这里后续可以尝试下自己加个额外的脚本，看看能不能用来实现最简单的添加方式。在common.ParseOptions里有-s参数，用来直接指定OPTIONS.device_specific参数，更多的参数指定更可以参考common.ParseOption
   device_specific = common.DeviceSpecificParams(
       input_zip=input_zip,
       input_version=OPTIONS.info_dict["recovery_api_version"],
