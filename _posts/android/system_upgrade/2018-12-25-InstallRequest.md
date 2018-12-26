@@ -138,20 +138,34 @@ struct DirEntry {
 
 ```cpp  
 struct Record { 
-    ui32 signature; // 文件头标识，值固定(0x504b0304)   
+    ui32 signature; // 文件头标识，值固定(0x504b0304)  
+    
     ui16 frVersion; // 解压文件所需 pkware最低版本   
+    
     ui16 frFlags; // 通用比特标志位(置比特0位=加密)   
+    
     ui16 frCompression; // 压缩方式   
+    
     ui16 frFileTime; // 文件最后修改时间   
+    
     ui16 frFileDate; //文件最后修改日期   
+    
     ui32 frCrc; // CRC-32校验码   
+    
     ui32 frCompressedSize; //  压缩后的大小   
+    
     ui32 frUncompressedSize; // 未压缩的大小   
+    
     ui16 frFileNameLength; //  文件名长度   
+    
     ui16 frExtraFieldLength; // 扩展区长度   
+    
     char* frFileName; // 文件名   
+    
     char* frExtraField; // 扩展区   
+    
     char* frData; // 压缩数据   
+    
 };
 ```
 
