@@ -74,14 +74,23 @@ zip文件格式由文件数据区、中央目录结构,中央目录结束标志�
 ```cpp
 struct EndLocator { 
     ui32 signature; //目录结束标记,(固定值0x504b0506)   
+    
     ui16 elDiskNumber; //当前磁盘编号   
+    
     ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号   
+    
     ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量   
+    
     ui16 elEntriesInDirectory; //中央目录结构总数   
+    
     ui32 elDirectorySize; //中央目录的大小   
+    
     ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移   
+    
     ui16 elCommentLen; // 注释长度   
+    
     char *elComment; // 注释内容   
+    
 };
 ```
 
@@ -94,14 +103,23 @@ struct EndLocator {
 ```cpp
 struct EndLocator { 
     ui32 signature; //目录结束标记,(固定值0x504b0506)   
+    
     ui16 elDiskNumber; //当前磁盘编号（0x0000）   
+    
     ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号（0x0000）   
+    
     ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量（0x1000）   
+    
     ui16 elEntriesInDirectory; //中央目录结构总数（0x1000）   
+    
     ui32 elDirectorySize; //中央目录的大小 （0xf2050000）  
+    
     ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移 （0xadff0200）  
+    
     ui16 elCommentLen; // 注释长度 （0x0000）  
+    
     // char *elComment; // 注释内容 （没有这个数据）  
+    
 };
 ```
 
@@ -110,25 +128,45 @@ struct EndLocator {
 ```cpp
 struct DirEntry { 
     ui32 signature; // 中央目录文件header标识（0x504b0102）   
+    
     ui16 deVersionMadeBy; // 压缩所用的pkware版本   
+    
     ui16 deVersionToExtract; // 解压所需pkware的最低版本   
+    
     ui16 deFlags; // 通用位标记   
+    
     ui16 deCompression; // 压缩方法   
+    
     ui16 deFileTime; // 文件最后修改时间   
+    
     ui16 deFileDate; // 文件最后修改日期   
+    
     ui32 deCrc; // CRC-32校验码   
+    
     ui32 deCompressedSize; // 压缩后的大小   
+    
     ui32 deUncompressedSize; // 未压缩的大小   
+    
     ui16 deFileNameLength; // 文件名长度   
+    
     ui16 deExtraFieldLength; // 扩展域长度   
+    
     ui16 deFileCommentLength; // 文件注释长度   
+    
     ui16 deDiskNumberStart; // 文件开始位置的磁盘编号   
+    
     ui16 deInternalAttributes; // 内部文件属性   
+    
     ui32 deExternalAttributes; // 外部文件属性   
+    
     ui32 deHeaderOffset; // 本地文件头的相对位移   
+    
     char *deFileName; // 目录文件名   
+    
     char *deExtraField; // 扩展域   
+    
     char *deFileComment; // 文件注释内容   
+    
 };
 ```
 
