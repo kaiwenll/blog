@@ -73,15 +73,15 @@ zip文件格式由文件数据区、中央目录结构,中央目录结束标志�
 
 ```cpp
 struct EndLocator { 
-    ui32 signature; //目录结束标记,(固定值0x504b0506) 
-    ui16 elDiskNumber; //当前磁盘编号 
-    ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号 
-    ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量 
-    ui16 elEntriesInDirectory; //中央目录结构总数 
-    ui32 elDirectorySize; //中央目录的大小 
-    ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移 
-    ui16 elCommentLen; // 注释长度 
-    char *elComment; // 注释内容 
+    ui32 signature; //目录结束标记,(固定值0x504b0506)   
+    ui16 elDiskNumber; //当前磁盘编号   
+    ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号   
+    ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量   
+    ui16 elEntriesInDirectory; //中央目录结构总数   
+    ui32 elDirectorySize; //中央目录的大小   
+    ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移   
+    ui16 elCommentLen; // 注释长度   
+    char *elComment; // 注释内容   
 };
 ```
 
@@ -93,15 +93,15 @@ struct EndLocator {
 
 ```cpp
 struct EndLocator { 
-    ui32 signature; //目录结束标记,(固定值0x504b0506) 
-    ui16 elDiskNumber; //当前磁盘编号（0x0000） 
-    ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号（0x0000） 
-    ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量（0x1000） 
-    ui16 elEntriesInDirectory; //中央目录结构总数（0x1000） 
-    ui32 elDirectorySize; //中央目录的大小 （0xf2050000）
-    ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移 （0xadff0200）
-    ui16 elCommentLen; // 注释长度 （0x0000）
-    // char *elComment; // 注释内容 （没有这个数据）
+    ui32 signature; //目录结束标记,(固定值0x504b0506)   
+    ui16 elDiskNumber; //当前磁盘编号（0x0000）   
+    ui16 elStartDiskNumber; //中央目录开始位置的磁盘编号（0x0000）   
+    ui16 elEntriesOnDisk; //该磁盘上所记录的核心目录数量（0x1000）   
+    ui16 elEntriesInDirectory; //中央目录结构总数（0x1000）   
+    ui32 elDirectorySize; //中央目录的大小 （0xf2050000）  
+    ui32 elDirectoryOffset; //中央目录开始位置相对于文件头的偏移 （0xadff0200）  
+    ui16 elCommentLen; // 注释长度 （0x0000）  
+    // char *elComment; // 注释内容 （没有这个数据）  
 };
 ```
 
@@ -109,26 +109,26 @@ struct EndLocator {
 
 ```cpp
 struct DirEntry { 
-    ui32 signature; // 中央目录文件header标识（0x504b0102） 
-    ui16 deVersionMadeBy; // 压缩所用的pkware版本 
-    ui16 deVersionToExtract; // 解压所需pkware的最低版本 
-    ui16 deFlags; // 通用位标记 
-    ui16 deCompression; // 压缩方法 
-    ui16 deFileTime; // 文件最后修改时间 
-    ui16 deFileDate; // 文件最后修改日期 
-    ui32 deCrc; // CRC-32校验码 
-    ui32 deCompressedSize; // 压缩后的大小 
-    ui32 deUncompressedSize; // 未压缩的大小 
-    ui16 deFileNameLength; // 文件名长度 
-    ui16 deExtraFieldLength; // 扩展域长度 
-    ui16 deFileCommentLength; // 文件注释长度 
-    ui16 deDiskNumberStart; // 文件开始位置的磁盘编号 
-    ui16 deInternalAttributes; // 内部文件属性 
-    ui32 deExternalAttributes; // 外部文件属性 
-    ui32 deHeaderOffset; // 本地文件头的相对位移 
-    char *deFileName; // 目录文件名 
-    char *deExtraField; // 扩展域 
-    char *deFileComment; // 文件注释内容 
+    ui32 signature; // 中央目录文件header标识（0x504b0102）   
+    ui16 deVersionMadeBy; // 压缩所用的pkware版本   
+    ui16 deVersionToExtract; // 解压所需pkware的最低版本   
+    ui16 deFlags; // 通用位标记   
+    ui16 deCompression; // 压缩方法   
+    ui16 deFileTime; // 文件最后修改时间   
+    ui16 deFileDate; // 文件最后修改日期   
+    ui32 deCrc; // CRC-32校验码   
+    ui32 deCompressedSize; // 压缩后的大小   
+    ui32 deUncompressedSize; // 未压缩的大小   
+    ui16 deFileNameLength; // 文件名长度   
+    ui16 deExtraFieldLength; // 扩展域长度   
+    ui16 deFileCommentLength; // 文件注释长度   
+    ui16 deDiskNumberStart; // 文件开始位置的磁盘编号   
+    ui16 deInternalAttributes; // 内部文件属性   
+    ui32 deExternalAttributes; // 外部文件属性   
+    ui32 deHeaderOffset; // 本地文件头的相对位移   
+    char *deFileName; // 目录文件名   
+    char *deExtraField; // 扩展域   
+    char *deFileComment; // 文件注释内容   
 };
 ```
 
@@ -138,20 +138,20 @@ struct DirEntry {
 
 ```cpp  
 struct Record { 
-    ui32 signature; // 文件头标识，值固定(0x504b0304) 
-    ui16 frVersion; // 解压文件所需 pkware最低版本 
-    ui16 frFlags; // 通用比特标志位(置比特0位=加密) 
-    ui16 frCompression; // 压缩方式 
-    ui16 frFileTime; // 文件最后修改时间 
-    ui16 frFileDate; //文件最后修改日期 
-    ui32 frCrc; // CRC-32校验码 
-    ui32 frCompressedSize; //  压缩后的大小 
-    ui32 frUncompressedSize; // 未压缩的大小 
-    ui16 frFileNameLength; //  文件名长度 
-    ui16 frExtraFieldLength; // 扩展区长度 
-    char* frFileName; // 文件名 
-    char* frExtraField; // 扩展区 
-    char* frData; // 压缩数据 
+    ui32 signature; // 文件头标识，值固定(0x504b0304)   
+    ui16 frVersion; // 解压文件所需 pkware最低版本   
+    ui16 frFlags; // 通用比特标志位(置比特0位=加密)   
+    ui16 frCompression; // 压缩方式   
+    ui16 frFileTime; // 文件最后修改时间   
+    ui16 frFileDate; //文件最后修改日期   
+    ui32 frCrc; // CRC-32校验码   
+    ui32 frCompressedSize; //  压缩后的大小   
+    ui32 frUncompressedSize; // 未压缩的大小   
+    ui16 frFileNameLength; //  文件名长度   
+    ui16 frExtraFieldLength; // 扩展区长度   
+    char* frFileName; // 文件名   
+    char* frExtraField; // 扩展区   
+    char* frData; // 压缩数据   
 };
 ```
 
@@ -276,33 +276,33 @@ zip文件格式是了解签名过程的基础，而这部分签名文件的过�
 #### 3.3 verifyPackage
 
 ```java
-	/**
-     * Verify the cryptographic signature of a system update package
-     * before installing it.  Note that the package is also verified
-     * separately by the installer once the device is rebooted into
-     * the recovery system.  This function will return only if the
-     * package was successfully verified; otherwise it will throw an
-     * exception.
-     *
-     * Verification of a package can take significant time, so this
-     * function should not be called from a UI thread.  Interrupting
-     * the thread while this function is in progress will result in a
-     * SecurityException being thrown (and the thread's interrupt flag
-     * will be cleared).
-     *
-     * @param packageFile  the package to be verified
-     * @param listener     an object to receive periodic progress
-     * updates as verification proceeds.  May be null.
-     * @param deviceCertsZipFile  the zip file of certificates whose
-     * public keys we will accept.  Verification succeeds if the
-     * package is signed by the private key corresponding to any
-     * public key in this file.  May be null to use the system default
-     * file (currently "/system/etc/security/otacerts.zip").
-     *
-     * @throws IOException if there were any errors reading the
-     * package or certs files.
-     * @throws GeneralSecurityException if verification failed
-     */
+	/**  
+     * Verify the cryptographic signature of a system update package  
+     * before installing it.  Note that the package is also verified  
+     * separately by the installer once the device is rebooted into  
+     * the recovery system.  This function will return only if the  
+     * package was successfully verified; otherwise it will throw an  
+     * exception.  
+     *  
+     * Verification of a package can take significant time, so this  
+     * function should not be called from a UI thread.  Interrupting  
+     * the thread while this function is in progress will result in a  
+     * SecurityException being thrown (and the thread's interrupt flag  
+     * will be cleared).  
+     *  
+     * @param packageFile  the package to be verified  
+     * @param listener     an object to receive periodic progress  
+     * updates as verification proceeds.  May be null.  
+     * @param deviceCertsZipFile  the zip file of certificates whose  
+     * public keys we will accept.  Verification succeeds if the  
+     * package is signed by the private key corresponding to any  
+     * public key in this file.  May be null to use the system default  
+     * file (currently "/system/etc/security/otacerts.zip").  
+     *  
+     * @throws IOException if there were any errors reading the  
+     * package or certs files.  
+     * @throws GeneralSecurityException if verification failed  
+     */  
     public static void verifyPackage(File packageFile,
                                      ProgressListener listener,
                                      File deviceCertsZipFile)
@@ -528,20 +528,20 @@ deviceCertsZipFile--签名证书压缩包路径，可以传入null，使用系�
 installPackage有两个重载方法，差别在于是否带```String msg```，此参数的含义最后在于传给PowerManagerService的reboot，作为重启原因，而如果msg为null的话，就默认重启原因为recovery。那我们就以不带msg参数的方法来做讲解吧。  
 
 ```java
-	/**
-     * Reboots the device in order to install the given update
-     * package.
-     * Requires the {@link android.Manifest.permission#REBOOT} permission.
-     *
-     * @param context      the Context to use
-     * @param packageFile  the update package to install.  Must be on
-     * a partition mountable by recovery.  (The set of partitions
-     * known to recovery may vary from device to device.  Generally,
-     * /cache and /data are safe.)
-     *
-     * @throws IOException  if writing the recovery command file
-     * fails, or if the reboot itself fails.
-     */
+	/**  
+     * Reboots the device in order to install the given update  
+     * package.  
+     * Requires the {@link android.Manifest.permission#REBOOT} permission.  
+     *  
+     * @param context      the Context to use  
+     * @param packageFile  the update package to install.  Must be on  
+     * a partition mountable by recovery.  (The set of partitions  
+     * known to recovery may vary from device to device.  Generally,  
+     * /cache and /data are safe.)  
+     *  
+     * @throws IOException  if writing the recovery command file  
+     * fails, or if the reboot itself fails.  
+     */  
     public static void installPackage(Context context, File packageFile)
         throws IOException {
         String filename = packageFile.getCanonicalPath();//获取升级包的标准路径格式
@@ -555,11 +555,11 @@ installPackage有两个重载方法，差别在于是否带```String msg```，�
 ```
 
 ```java
-	/**
-     * Reboot into the recovery system with the supplied argument.
-     * @param arg to pass to the recovery utility.
-     * @throws IOException if something goes wrong.
-     */
+	/**  
+     * Reboot into the recovery system with the supplied argument.  
+     * @param arg to pass to the recovery utility.  
+     * @throws IOException if something goes wrong.  
+     */  
     private static void bootCommand(Context context, String arg) throws IOException {
         // cache/recovery/
         RECOVERY_DIR.mkdirs();  // In case we need it
@@ -586,4 +586,4 @@ installPackage有两个重载方法，差别在于是否带```String msg```，�
     }
 ```
 
-请求升级的流程代码就比较简单了
+请求升级的流程代码就比较简单了，到这里就把升级包请求命令和升级包的位置写入到/cache/recovery/command中，而后面要做的事就是开机时去读取command，来决定启动进入recovery，然后找到升级包安装，敬请关于后续。  
