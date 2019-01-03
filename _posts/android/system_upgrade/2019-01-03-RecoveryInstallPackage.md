@@ -21,63 +21,35 @@ tags:
 先不着急看代码流程，在recovery.cpp开头，有一段注释非常重要，介绍了recovery安装升级包的流程，写代码就要这样。  
 
 ```java
-/*
-
- * OTA INSTALL  
- 
- * 1. main system downloads OTA package to /cache/some-filename.zip  
- 
+/*   
+ * OTA INSTALL    
+ * 1. main system downloads OTA package to /cache/some-filename.zip    
  * 2. main system writes "--update_package=/cache/some-filename.zip"  
- 
- * 3. main system reboots into recovery  
- 
- * 4. get_args() writes BCB with "boot-recovery" and "--update_package=..."  
- 
- *    -- after this, rebooting will attempt to reinstall the update --  
- 
- * 5. install_package() attempts to install the update  
- 
- *    NOTE: the package install must itself be restartable from any point  
- 
- * 6. finish_recovery() erases BCB  
- 
- *    -- after this, rebooting will (try to) restart the main system --  
- 
- * 7. ** if install failed **  
- 
- *    7a. prompt_and_wait() shows an error icon and waits for the user  
- 
- *    7b; the user reboots (pulling the battery, etc) into the main system  
- 
- * 8. main() calls maybe_install_firmware_update()  
- 
- *    ** if the update contained radio/hboot firmware **:  
- 
- *    8a. m_i_f_u() writes BCB with "boot-recovery" and "--wipe_cache"  
- 
- *        -- after this, rebooting will reformat cache & restart main system --  
- 
- *    8b. m_i_f_u() writes firmware image into raw cache partition  
- 
- *    8c. m_i_f_u() writes BCB with "update-radio/hboot" and "--wipe_cache"  
- 
- *        -- after this, rebooting will attempt to reinstall firmware --  
- 
- *    8d. bootloader tries to flash firmware  
- 
- *    8e. bootloader writes BCB with "boot-recovery" (keeping "--wipe_cache")  
- 
- *        -- after this, rebooting will reformat cache & restart main system --  
- 
- *    8f. erase_volume() reformats /cache  
- 
- *    8g. finish_recovery() erases BCB  
- 
- *        -- after this, rebooting will (try to) restart the main system --  
- 
- * 9. main() calls reboot() to boot main system  
- 
- */  
+ * 3. main system reboots into recovery    
+ * 4. get_args() writes BCB with "boot-recovery" and "--update_package=..."      
+ *    -- after this, rebooting will attempt to reinstall the update --      
+ * 5. install_package() attempts to install the update      
+ *    NOTE: the package install must itself be restartable from any point      
+ * 6. finish_recovery() erases BCB       
+ *    -- after this, rebooting will (try to) restart the main system --      
+ * 7. ** if install failed **      
+ *    7a. prompt_and_wait() shows an error icon and waits for the user      
+ *    7b; the user reboots (pulling the battery, etc) into the main system      
+ * 8. main() calls maybe_install_firmware_update()        
+ *    ** if the update contained radio/hboot firmware **:            
+ *    8a. m_i_f_u() writes BCB with "boot-recovery" and "--wipe_cache"       
+ *        -- after this, rebooting will reformat cache & restart main system --    
+ *    8b. m_i_f_u() writes firmware image into raw cache partition   
+ *    8c. m_i_f_u() writes BCB with "update-radio/hboot" and "--wipe_cache"      
+ *        -- after this, rebooting will attempt to reinstall firmware --     
+ *    8d. bootloader tries to flash firmware       
+ *    8e. bootloader writes BCB with "boot-recovery" (keeping "--wipe_cache")     
+ *        -- after this, rebooting will reformat cache & restart main system --       
+ *    8f. erase_volume() reformats /cache     
+ *    8g. finish_recovery() erases BCB        
+ *        -- after this, rebooting will (try to) restart the main system --       
+ * 9. main() calls reboot() to boot main system       
+ */        
 ```
 
 前面还介绍了recovery和主系统的交互方式和恢复出厂设置的流程，这里扣了一段OTA升级的。  
