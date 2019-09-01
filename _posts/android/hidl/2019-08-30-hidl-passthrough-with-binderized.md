@@ -1,6 +1,6 @@
 ---
 layout:      post
-title:      "hidl系列二"
+title:      "hidl系列一"
 subtitle:   "深入理解直通式和绑定式"
 navcolor:   "invert"
 date:       2019-08-30

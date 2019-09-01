@@ -1,6 +1,6 @@
 ---
 layout:      post
-title:      "hidl系列二"
+title:      "HIDL系列一"
 subtitle:   "same-process直通式的案例及理解"
 navcolor:   "invert"
 date:       2019-09-01

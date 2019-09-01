@@ -1,6 +1,6 @@
 ---
 layout:      post
-title:      "hidl系列三"
+title:      "HIDL系列三"
 subtitle:   "绑定直通式的案例及理解"
 navcolor:   "invert"
 date:       2019-09-01
