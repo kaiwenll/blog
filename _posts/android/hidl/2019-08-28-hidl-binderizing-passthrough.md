@@ -1,7 +1,7 @@
 ---
 layout:      post
 title:      "HIDL系列三"
-subtitle:   "绑定直通式的案例及理解"
+subtitle:   "绑定化直通式的案例及理解"
 navcolor:   "invert"
 date:       2019-09-01
 author:     "Cheson"
